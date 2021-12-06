@@ -18,7 +18,8 @@ const config = (function loadConfig() {
 		apiToken: process.env.API_TOKEN,
 		zoneId: process.env.ZONE_ID,
 		recordName: process.env.RECORD_NAME,
-		// Apply default values:
+		recordId: process.env.RECORD_ID,
+		// Optional items - apply default values:
 		checkIpUrl: process.env.CHECK_IP_URL || "https://checkip.amazonaws.com/",
 		apiUrl: process.env.API_URL || "https://dns.hetzner.com/api/v1/",
 		interval: process.env.INTERVAL || 10 * 1000,
@@ -33,28 +34,32 @@ const webServiceBase = { timeout: config.timeout };
 // DNS update web service
 const dnsApi = axios.create({
 	...webServiceBase,
-	baseURL: process.env.API_URL,
+	baseURL: config.apiUrl,
 	headers: {
 		"Content-Type": "application/json",
-		"Auth-API-Token": process.env.API_TOKEN
+		"Auth-API-Token": config.apiToken
 	}
 });
 
 // IP address check web service
 const checkIpApi = axios.create({
 	...webServiceBase,
-	baseURL: process.env.CHECK_IP_URL
+	baseURL: config.checkIpUrl
 });
 
 // Application state
 var lastIpAddr = null;
+
+function isIpv4Address(str) {
+	return !!/^\d{1,3}(\.\d{1,3}){3}$/.test(str);
+}
 
 function check() {
 	console.debug("Checking IP address...");
 	checkIpApi.get("/")
 		.then(rsp => {
 			const ipAddr = ("" + rsp.data).trim();
-			if (!/^\d+\.\d+.\d+.\d+$/.test(ipAddr)) {
+			if (!isIpv4Address(ipAddr)) {
 				console.error("Received malformed response from IP address check", rsp.data);
 			} else if (lastIpAddr !== ipAddr) {
 				console.log("IP address has changed from " + lastIpAddr + " to " + ipAddr);
@@ -69,14 +74,14 @@ function check() {
 }
 
 function update(ipAddr) {
-	dnsApi.put("records/" + process.env.RECORD_ID, {
+	dnsApi.put("records/" + config.recordId, {
 			"type": "A",
-			"name": process.env.RECORD_NAME,
+			"name": config.recordName,
 			"value": ipAddr,
-			"zone_id": process.env.ZONE_ID,
-			"ttl": parseInt(process.env.TTL)
+			"zone_id": config.zoneId,
+			"ttl": parseInt(config.ttl)
 		})
-		.then(rsp => {
+		.then(_ => {
 			console.log("DNS record has been updated to " + ipAddr);
 			lastIpAddr = ipAddr;
 		})
@@ -86,7 +91,7 @@ function update(ipAddr) {
 }
 
 function schedule() {
-	setTimeout(check, process.env.INTERVAL);
+	setTimeout(check, config.interval);
 }
 
 check();
